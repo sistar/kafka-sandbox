@@ -1,0 +1,13 @@
+git clone http://git-wip-us.apache.org/repos/asf/kafka.git kafka
+./sbt update
+./sbt package
+./sbt assembly-package-dependency
+./sbt +package
+
+bin/zookeeper-server-start.sh config/zookeeper.properties
+
+env JMX_PORT=9999  bin/kafka-server-start.sh config/server0.properties
+env JMX_PORT=10000  bin/kafka-server-start.sh config/server1.properties
+env JMX_PORT=10001  bin/kafka-server-start.sh config/server2.properties
+
+bin/kafka-topics.sh --zookeeper localhost:2181 --create --topic tracking.cached.requests --partitions 3 --replication-factor 2
