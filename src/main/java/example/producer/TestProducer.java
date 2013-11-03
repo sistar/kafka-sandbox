@@ -7,6 +7,7 @@ import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
 
 public class TestProducer {
+
     public static void main(String[] args) {
         long events = Long.parseLong(args[0]);
         Random rnd = new Random();
@@ -25,9 +26,10 @@ public class TestProducer {
             long runtime = new Date().getTime();
             String ip = "192.168.2." + rnd.nextInt(255);
             String msg = runtime + ",www.example.com," + ip;
-            KeyedMessage<String, String> data = new KeyedMessage<String, String>("tracking.cached.requests", ip, msg);
+            KeyedMessage<String, String> data = new KeyedMessage<String, String>(KafkaProperties.TRACKING_CACHED_REQUESTS_TOPIC, ip, msg);
             producer.send(data);
         }
+        System.out.println("sent " +events+" events");
         producer.close();
     }
 }

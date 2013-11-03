@@ -54,7 +54,7 @@ public class TestConsumer {
 
     public void run() {
         Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
-        topicCountMap.put(topic, new Integer(1));
+        topicCountMap.put(topic, new Integer(3));
         Map<String, List<KafkaStream<byte[], byte[]>>> consumerMap = consumer.createMessageStreams(topicCountMap);
         KafkaStream<byte[], byte[]> stream =  consumerMap.get(topic).get(0);
         ConsumerIterator<byte[], byte[]> it = stream.iterator();
