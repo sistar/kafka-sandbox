@@ -17,4 +17,8 @@ dependencies {
     compile(group: 'org.slf4j', name: 'log4j-over-slf4j', version: '1.4.2')
     compile 'com.yammer.metrics:metrics-core:2.2.0'
     compile files('libs/kafka_2.10-0.8.0.jar')
+
+    compile('com.codahale.metrics:metrics-core:3.0.1')
+    compile('com.codahale.metrics:metrics-graphite:3.0.1')
+
 }

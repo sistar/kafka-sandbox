@@ -2,15 +2,24 @@ package example.producer;
 
 import java.util.*;
 
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.MetricRegistry;
 import kafka.javaapi.producer.Producer;
 import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
 
-public class TestProducer {
+public class TestProducer implements Runnable {
 
-    public static void main(String[] args) {
-        long events = Long.parseLong(args[0]);
-        Random rnd = new Random();
+    private long numberOfEventsToSend;
+    private final Random rnd;
+    private final ProducerConfig config;
+    private final Counter counter;
+
+    public TestProducer(long numberOfEventsToSend, MetricRegistry metricRegistry) {
+
+        counter = metricRegistry.counter(KafkaProperties.TRACKING_CACHED_REQUESTS_TOPIC + ".produced");
+        this.numberOfEventsToSend = numberOfEventsToSend;
+        rnd = new Random();
 
         Properties props = new Properties();
         props.put("metadata.broker.list", "localhost:9092,localhost:9093,localhost:9094");
@@ -18,18 +27,29 @@ public class TestProducer {
         props.put("partitioner.class", "example.producer.SimplePartitioner");
         props.put("request.required.acks", "1");
 
-        ProducerConfig config = new ProducerConfig(props);
+        config = new ProducerConfig(props);
 
-        Producer<String, String> producer = new Producer<String, String>(config);
 
-        for (long nEvents = 0; nEvents < events; nEvents++) {
+    }
+
+    public void close() {
+
+    }
+
+
+    @Override
+    public void run() {
+        final Producer<String, String> producer
+                = new Producer<String, String>(config);
+        for (long nEvents = 0; nEvents < numberOfEventsToSend; nEvents++) {
             long runtime = new Date().getTime();
             String ip = "192.168.2." + rnd.nextInt(255);
             String msg = runtime + ",www.example.com," + ip;
             KeyedMessage<String, String> data = new KeyedMessage<String, String>(KafkaProperties.TRACKING_CACHED_REQUESTS_TOPIC, ip, msg);
             producer.send(data);
+            counter.inc();
+
         }
-        System.out.println("sent " +events+" events");
         producer.close();
     }
 }
