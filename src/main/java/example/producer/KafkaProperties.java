@@ -5,7 +5,7 @@
  * The ASF licenses this file to You under the Apache License, Version 2.0
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
- * 
+ *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
@@ -16,17 +16,32 @@
  */
 package example.producer;
 
-public interface KafkaProperties
-{
-  final static String zkConnect = "127.0.0.1:2181";
-  final static  String groupId = "group1";
+import kafka.consumer.ConsumerConfig;
 
-  final static String kafkaServerURL = "localhost";
-  final static int kafkaServerPort = 9092;
-  final static int kafkaProducerBufferSize = 64*1024;
-  final static int connectionTimeOut = 100000;
-  final static int reconnectInterval = 10000;
+import java.util.Properties;
 
-  final static String clientId = "SimpleConsumerDemoClient";
-    String TRACKING_CACHED_REQUESTS_TOPIC = "tracking.cached.requests";
+public abstract class KafkaProperties {
+    final static String zkConnect = "127.0.0.1:2181";
+    final static String groupId = "group1";
+
+    final static String kafkaServerURL = "localhost";
+    final static int kafkaServerPort = 9092;
+    final static int kafkaProducerBufferSize = 64 * 1024;
+    final static int connectionTimeOut = 100000;
+    final static int reconnectInterval = 10000;
+
+    final static String clientId = "SimpleConsumerDemoClient";
+    public final static String TRACKING_CACHED_REQUESTS_TOPIC = "tracking.cached.requests";
+
+    public static ConsumerConfig createConsumerConfig() {
+        Properties props = new Properties();
+        props.put("zookeeper.connect", zkConnect);
+        props.put("group.id", groupId);
+        props.put("zookeeper.session.timeout.ms", "400");
+        props.put("zookeeper.sync.time.ms", "200");
+        props.put("auto.commit.interval.ms", "1000");
+
+        return new ConsumerConfig(props);
+
+    }
 }
