@@ -1,5 +1,10 @@
 export KAFKA_HOME=/var/opt/kafka
 export SCALA_VERSION=2.10
+for i in {0..2}
+do
+   sed '/^[broker.id=]/ s/0/^C' kafka/config/server.properties > kafka/config/server-${i}.properties
+done
+
 gnome-terminal -e "$KAFKA_HOME/bin/zookeeper-server-start.sh $KAFKA_HOME/config/zookeeper.properties"
 gnome-terminal -e "env JMX_PORT=9999 $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server0.properties"
 gnome-terminal -e "env JMX_PORT=10000 $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server1.properties"
