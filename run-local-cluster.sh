@@ -1,13 +1,21 @@
+#!/bin/bash
 export KAFKA_HOME=/var/opt/kafka
-export SCALA_VERSION=2.10
 for i in {0..2}
 do
-   sed '/^[broker.id=]/ s/0/^C' kafka/config/server.properties > kafka/config/server-${i}.properties
+	let real_port=$i+9092 
+	sed "{
+		/^broker.id=/ s/0/${i}/
+		/^port=/ s/9092/${real_port}/
+		/^log.dirs=/ s/\/tmp\/kafka-logs/\/tmp\/kafka-logs-${i}/
+        
+             }" ${KAFKA_HOME}/config/server.properties > ${KAFKA_HOME}/config/server-${i}.properties
 done
 
 gnome-terminal -e "$KAFKA_HOME/bin/zookeeper-server-start.sh $KAFKA_HOME/config/zookeeper.properties"
-gnome-terminal -e "env JMX_PORT=9999 $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server0.properties"
-gnome-terminal -e "env JMX_PORT=10000 $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server1.properties"
-gnome-terminal -e "env JMX_PORT=10001 $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server2.properties"
 
+for i in {0..2}
+do
+  let JMX_PORT=$i+9999
+  gnome-terminal -e "env JMX_PORT=${JMX_PORT} $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server-${i}.properties"
+done
 [[ $($KAFKA_HOME/bin/kafka-topics.sh --zookeeper localhost:2181 --list) =~ "tracking.cached.requests" ]] || $($KAFKA_HOME/bin/kafka-topics.sh --zookeeper localhost:2181 --create --topic tracking.cached.requests --partitions 3 --replication-factor 2)

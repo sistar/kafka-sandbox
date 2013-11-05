@@ -3,7 +3,6 @@
 rm -rf kafka
 export SCALA_VERSION=2.10.1
 git clone http://git-wip-us.apache.org/repos/asf/kafka.git kafka
-
 cd kafka
 ./sbt clean
 ./sbt "++${SCALA_VERSION} update"
