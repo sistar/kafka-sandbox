@@ -9,6 +9,7 @@ import kafka.consumer.ConsumerIterator;
 import kafka.consumer.KafkaStream;
 import kafka.javaapi.consumer.ConsumerConnector;
 import kafka.javaapi.message.ByteBufferMessageSet;
+import kafka.message.MessageAndMetadata;
 import kafka.message.MessageAndOffset;
 
 import java.io.UnsupportedEncodingException;
@@ -52,10 +53,12 @@ public class TestConsumer implements Runnable {
         ConsumerIterator<byte[], byte[]> it = stream.iterator();
 
         while (it.hasNext()) {
-            String msg = String.valueOf( it.next().message());
+            MessageAndMetadata<byte[],byte[]> next = it.next();
+            String msg = String.valueOf(next.message());
             consumed.inc();
-            //System.out.println(new String(it.next().message()));
+            System.out.println(msg);
         }
+
     }
 
 
