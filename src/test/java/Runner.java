@@ -1,14 +1,9 @@
-package example;
-
-import com.codahale.metrics.MetricFilter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.graphite.Graphite;
-import com.codahale.metrics.graphite.GraphiteReporter;
 import example.producer.TestProducer;
 import kafka.examples.TestConsumer;
 
 import java.net.InetSocketAddress;
-import java.util.concurrent.TimeUnit;
 
 
 public class Runner {

@@ -15,7 +15,7 @@ import static org.testng.Assert.assertEquals;
 
 public class SameMessageTest {
     @Test
-    public void testThatSameMessagesAreRetrievd() throws Exception {
+    public void testThatSameMessagesAreRetrieved() throws Exception {
         ImmutableList<String> messages = createMessages();
         System.out.println(messages);
         Properties props = new Properties();
@@ -30,7 +30,6 @@ public class SameMessageTest {
                 = new Producer<String, String>(config);
         String topic = "test.topic";
         for (String message : messages) {
-
             producer.send(new KeyedMessage<String, String>(topic, message));
         }
 
@@ -50,7 +49,6 @@ public class SameMessageTest {
             builder.add(msg);
         }
         assertEquals(builder.build(), messages);
-
     }
 
     private ImmutableList<String> createMessages() {
@@ -58,7 +56,6 @@ public class SameMessageTest {
         for (int i = 0; i < 3; i++) {
             builder.add(String.format("msg%s-%s", i, new Date()));
         }
-
         return builder.build();
     }
 }
