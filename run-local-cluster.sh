@@ -20,4 +20,4 @@ do
   let JMX_PORT=$i+9999
   gnome-terminal -e "env JMX_PORT=${JMX_PORT} SCALA_VERSION=2.10 $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/server-${i}.properties" --tab-with-profile=stayOpen
 done
-[[ $($KAFKA_HOME/bin/kafka-topics.sh --zookeeper localhost:2181 --list) =~ "tracking.cached.requests" ]] || $($KAFKA_HOME/bin/kafka-topics.sh --zookeeper localhost:2181 --create --topic tracking.cached.requests --partitions 3 --replication-factor 2)
+[[ $( env SCALA_VERSION=2.10 $KAFKA_HOME/bin/kafka-topics.sh --zookeeper localhost:2181 --list) =~ "tracking.cached.requests" ]] || $(env SCALA_VERSION=2.10 $KAFKA_HOME/bin/kafka-topics.sh --zookeeper localhost:2181 --create --topic tracking.cached.requests --partitions 3 --replication-factor 2)

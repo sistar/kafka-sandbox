@@ -22,7 +22,7 @@ public class TestProducer implements Runnable {
         rnd = new Random();
 
         Properties props = new Properties();
-        props.put("metadata.broker.list", "localhost:9092,localhost:9093,localhost:9094");
+        props.put("metadata.broker.list", KafkaProperties.METADATA_BROKER_LIST);
         props.put("serializer.class", "kafka.serializer.StringEncoder");
         props.put("partitioner.class", "example.producer.SimplePartitioner");
         props.put("request.required.acks", "1");

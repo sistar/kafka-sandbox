@@ -32,6 +32,7 @@ public abstract class KafkaProperties {
 
     final static String clientId = "SimpleConsumerDemoClient";
     public final static String TRACKING_CACHED_REQUESTS_TOPIC = "tracking.cached.requests";
+    public static final String METADATA_BROKER_LIST = "localhost:9092,localhost:9093,localhost:9094";
 
     public static ConsumerConfig createConsumerConfig() {
         Properties props = new Properties();

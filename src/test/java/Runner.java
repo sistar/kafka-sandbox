@@ -19,9 +19,9 @@ public class Runner {
         reporter.start(5, TimeUnit.SECONDS);*/
         TestProducer testProducer = new TestProducer(1000000L, metricRegistry);
         TestConsumer simpleConsumer = new TestConsumer("tracking.cached.requests", metricRegistry);
-        Thread consumerThread = new Thread(simpleConsumer);
+        //Thread consumerThread = new Thread(simpleConsumer);
         Thread producerThread = new Thread(testProducer);
-        consumerThread.start();
+        //consumerThread.start();
         producerThread.start();
     }
 }
