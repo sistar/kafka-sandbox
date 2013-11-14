@@ -28,7 +28,6 @@ myOutputPath
 input_data
 merge-log/src/test/resources/data
 .vagrant
-kafka
 gradle/
 gradlew
 gradlew.bat
