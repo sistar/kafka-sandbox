@@ -11,6 +11,7 @@ import kafka.api.{PartitionOffsetRequestInfo, FetchRequestBuilder, FetchRequest}
 import kafka.common.{TopicAndPartition, ErrorMapping}
 import java.nio.ByteBuffer
 import com.google.common.collect.ImmutableList
+import kafka.cluster.Broker
 
 
 class SimpleScalaExample {
@@ -19,7 +20,7 @@ class SimpleScalaExample {
   def main(args: Array[String]): Unit = {
     val example: SimpleScalaExample = new SimpleScalaExample
     val maxReads: Long = args(0).toLong
-    val topic : String = args(1)
+    val topic: String = args(1)
     val partition: Int = args(2).toInt
     val seeds: ImmutableList[BrokerInfo] = BrokerInfo.brokerInfos(KafkaProperties.METADATA_BROKER_LIST)
     try {
@@ -33,11 +34,11 @@ class SimpleScalaExample {
     }
   }
 
-  private val m_replicaBrokers: List[BrokerInfo] = List()
+  private var m_replicaBrokers: Seq[Broker]
 
   def run(maxReads: Long, topic: String, partition: Int, seedBrokers: ImmutableList[BrokerInfo]) {
     val metadata: PartitionMetadata = getPartitionMetadata(topic, partition, seedBrokers)
-    //var leadBroker: String = metadata.leader.host
+    var leadBroker:[String] = metadata.leader.host
     //val leadBrokerPort: Integer = metadata.leader.port
     val clientName: String = "Client_" + topic + "_" + partition
     val consumer = new SimpleConsumer(leadBroker, leadBrokerPort, 100000, 64 * 1024, clientName)
@@ -67,7 +68,6 @@ class SimpleScalaExample {
       }
       numErrors = 0
       var numRead: Long = 0
-      import scala.collection.JavaConversions._
       for (messageAndOffset <- fetchResponse.messageSet(topic, partition)) {
         val currentOffset: Long = messageAndOffset.offset
         if (currentOffset < readOffset) {
@@ -167,7 +167,8 @@ class SimpleScalaExample {
           }
         }
         ({
-          i += 1; i - 1
+          i += 1;
+          i - 1
         })
       }
     }
@@ -175,45 +176,35 @@ class SimpleScalaExample {
     throw new KafkaClientException("Unable to find new leader after Broker failure. Exiting")
   }
 
-  private def findLeader(seedBrokers: List[BrokerInfo], a_topic: String, a_partition: Int): PartitionMetadata = {
-    var returnMetaData: PartitionMetadata = null
-    import scala.collection.JavaConversions._
-    for (seed <- seedBrokers) {
-      var consumer: SimpleConsumer = null
-      try {
-        consumer = new SimpleConsumer(seed.getHost, seed.getPort, 100000, 64 * 1024, "leaderLookup")
-        val topics: List[String] = List()
-        topics.add(a_topic)
-        val req: TopicMetadataRequest = new TopicMetadataRequest(topics)
-        val resp: TopicMetadataResponse = consumer.send(req)
-        val metaData: List[TopicMetadata] = resp.topicsMetadata
-        import scala.collection.JavaConversions._
-        for (item <- metaData) {
-          import scala.collection.JavaConversions._
-          for (part <- item.partitionsMetadata) {
-            if (part.partitionId == a_partition) {
-              returnMetaData = part
-              break //todo: break is not supported
-            }
-          }
-        }
-      }
-      catch {
-        case e: Exception => {
-          LOGGER.error("Error communicating with Broker [" + seed + "] to find Leader for [" + a_topic + ", " + a_partition + "] Reason: " + e)
-        }
-      }
-      finally {
-        if (consumer != null) consumer.close
-      }
+  def using[Closeable <: {def close() : Unit}, B](closeable: Closeable)(getB: Closeable => B): B =
+    try {
+      getB(closeable)
+    } finally {
+      closeable.close()
     }
-    if (returnMetaData != null) {
-      m_replicaBrokers.clear
-      import scala.collection.JavaConversions._
-      for (replica <- returnMetaData.replicas) {
-        m_replicaBrokers.add(new BrokerInfo(replica))
+
+
+  private def findLeader(seedBrokers: Seq[Broker], a_topic: String, correlationId: Int): PartitionMetadata = {
+    var returnMetaData: PartitionMetadata = null
+    seedBrokers.takeWhile(_ => returnMetaData == null).foreach(seed => try {
+      using(new SimpleConsumer(seed.host, seed.port, 100000, 64 * 1024, "leaderLookup")) {
+        consumer =>
+          val topics: List[String] = List(a_topic)
+          val req: TopicMetadataRequest = new TopicMetadataRequest(topics, correlationId)
+          val resp: TopicMetadataResponse = consumer.send(req)
+          val metaData: Seq[TopicMetadata] = resp.topicsMetadata
+          val metaDataFiltered: Seq[TopicMetadata] = metaData.filter(item => item.partitionsMetadata.contains(correlationId))
       }
+    } catch {
+      case e: Exception => {
+        LOGGER.error("Error communicating with Broker [" + seed + "] to find Leader for [" + a_topic + ", " + correlationId + "] Reason: " + e)
+      }
+    })
+
+    if (returnMetaData != null) {
+      m_replicaBrokers = returnMetaData.replicas
     }
     return returnMetaData
   }
+
 }
