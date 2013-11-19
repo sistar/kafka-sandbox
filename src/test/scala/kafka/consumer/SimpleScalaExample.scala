@@ -38,7 +38,7 @@ class SimpleScalaExample {
 
   def run(maxReads: Long, topic: String, partition: Int, seedBrokers: ImmutableList[BrokerInfo]) {
     val metadata: PartitionMetadata = getPartitionMetadata(topic, partition, seedBrokers)
-    var leadBroker:[String] = metadata.leader.host
+
     //val leadBrokerPort: Integer = metadata.leader.port
     val clientName: String = "Client_" + topic + "_" + partition
     val consumer = new SimpleConsumer(leadBroker, leadBrokerPort, 100000, 64 * 1024, clientName)
@@ -62,8 +62,8 @@ class SimpleScalaExample {
         }
         consumer.close
         consumer = null
-        val oldLeader: BrokerInfo = new BrokerInfo(leadBroker, leadBrokerPort)
-        leadBroker = findNewLeader(oldLeader, topic, partition)
+
+        leadBroker = findNewLeader(metadata.leader, topic, partition)
         continue //todo: continue is not supported
       }
       numErrors = 0
@@ -137,7 +137,7 @@ class SimpleScalaExample {
     return offsets(0)
   }
 
-  private def findNewLeader(a_oldLeader: BrokerInfo, a_topic: String, a_partition: Int): String = {
+  private def findNewLeader(a_oldLeader: Option[Broker], a_topic: String, a_partition: Int): String = {
     {
       var i: Int = 0
       while (i < 3) {
@@ -150,7 +150,8 @@ class SimpleScalaExample {
           else if (metadata.leader == null) {
             goToSleep = true
           }
-          else if (a_oldLeader.getHost.equalsIgnoreCase(metadata.leader.host) && i == 0) {
+          a_oldLeader.;
+          else if (a_oldLeader.host .equalsIgnoreCase(metadata.leader.host) && i == 0) {
             goToSleep = true
           }
           else {
