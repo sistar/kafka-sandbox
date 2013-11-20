@@ -137,6 +137,10 @@ class SimpleScalaExample {
     return offsets(0)
   }
 
+  private def getHost(broker: Option[Broker]) : Option[String] = {
+    broker.map { _.host }
+  }
+
   private def findNewLeader(a_oldLeader: Option[Broker], a_topic: String, a_partition: Int): String = {
     {
       var i: Int = 0
@@ -150,8 +154,7 @@ class SimpleScalaExample {
           else if (metadata.leader == null) {
             goToSleep = true
           }
-          a_oldLeader.;
-          else if (a_oldLeader.host .equalsIgnoreCase(metadata.leader.host) && i == 0) {
+          else if (a_oldLeader.map { _.host.toLowerCase } == metadata.leader.map { _.host.toLowerCase } && i == 0) {
             goToSleep = true
           }
           else {
