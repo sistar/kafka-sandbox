@@ -28,5 +28,5 @@ dependencies {
     compile('com.google.guava:guava:15.0')
     compile('org.xerial.snappy:snappy-java:1.0.5')
     testCompile('org.testng:testng:6.8.7')
-    testCompile('org.scalatest:scalatest_2.10:1.9.2')
+    testCompile('org.scalatest:scalatest_2.10:2.0')
 }

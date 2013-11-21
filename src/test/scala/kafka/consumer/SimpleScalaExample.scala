@@ -12,6 +12,8 @@ import kafka.common.{TopicAndPartition, ErrorMapping}
 import java.nio.ByteBuffer
 import com.google.common.collect.ImmutableList
 import kafka.cluster.Broker
+import scala.collection.immutable.HashMap
+import java.io.UnsupportedEncodingException
 
 
 class SimpleScalaExample {
@@ -34,37 +36,53 @@ class SimpleScalaExample {
     }
   }
 
+
   private var m_replicaBrokers: Seq[Broker]
 
-  def run(maxReads: Long, topic: String, partition: Int, seedBrokers: ImmutableList[BrokerInfo]) {
+  private def handleFetchResponseError(numErrors: Int, fetchResponse: FetchResponse) : Int = {
+
+    val code: Short = fetchResponse.errorCode(topic, partition)
+    LOGGER.error("Error fetching data from the Broker:" + metadata.leader.map {
+      _.host
+    }.get + " Reason: " + code)
+    if (numErrors + 1 > 5) throw new RuntimeException("more than 5 errors")
+    if (code == ErrorMapping.OffsetOutOfRangeCode) {
+      readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.LatestTime, clientName)
+      return numErrors + 1
+    }
+    consumer.close
+    consumer = null
+
+    leadBroker = findNewLeader(metadata.leader, topic, partition)
+    return numErrors + 1
+  }
+
+  def run(maxReads1: Long, topic: String, partition: Int, seedBrokers: ImmutableList[BrokerInfo]) {
+    var maxReadsCounter = maxReads1
     val metadata: PartitionMetadata = getPartitionMetadata(topic, partition, seedBrokers)
 
     //val leadBrokerPort: Integer = metadata.leader.port
     val clientName: String = "Client_" + topic + "_" + partition
-    val consumer = new SimpleConsumer(leadBroker, leadBrokerPort, 100000, 64 * 1024, clientName)
+    var consumer = new SimpleConsumer(metadata.leader.map {
+      _.host
+    }.get, metadata.leader.map {
+      _.port
+    }.get, 100000, 64 * 1024, clientName)
     var readOffset: Long = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.EarliestTime, clientName)
     LOGGER.info(String.format("last offset for topic %s partition %s : %s ", topic, partition, readOffset))
     var numErrors: Int = 0
-    while (maxReads > 0) {
+    while (maxReadsCounter > 0) {
       if (consumer == null) {
-        consumer = new SimpleConsumer(leadBroker, leadBrokerPort, 100000, 64 * 1024, clientName)
+        consumer = new SimpleConsumer(metadata.leader.map {
+          _.host
+        }.get, metadata.leader.map {
+          _.port
+        }.get, 100000, 64 * 1024, clientName)
       }
       val req: FetchRequest = new FetchRequestBuilder().clientId(clientName).addFetch(topic, partition, readOffset, 100000).build
       val fetchResponse: FetchResponse = consumer.fetch(req)
       if (fetchResponse.hasError) {
-        numErrors += 1
-        val code: Short = fetchResponse.errorCode(topic, partition)
-        LOGGER.error("Error fetching data from the Broker:" + leadBroker + " Reason: " + code)
-        if (numErrors > 5) break //todo: break is not supported
-        if (code == ErrorMapping.OffsetOutOfRangeCode) {
-          readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.LatestTime, clientName)
-          continue //todo: continue is not supported
-        }
-        consumer.close
-        consumer = null
-
-        leadBroker = findNewLeader(metadata.leader, topic, partition)
-        continue //todo: continue is not supported
+        numErrors = handleFetchResponseError(numErrors, fetchResponse)
       }
       numErrors = 0
       var numRead: Long = 0
@@ -89,7 +107,7 @@ class SimpleScalaExample {
         }
         LOGGER.info(String.valueOf(messageAndOffset.offset) + ": " + content)
         numRead += 1
-        maxReads -= 1
+        maxReadsCounter -= 1
       }
       if (numRead == 0) {
         try {
@@ -124,8 +142,8 @@ class SimpleScalaExample {
 
   def getLastOffset(consumer: SimpleConsumer, topic: String, partition: Int, whichTime: Long, clientName: String): Long = {
     val topicAndPartition: TopicAndPartition = new TopicAndPartition(topic, partition)
-    val requestInfo: Map[TopicAndPartition, PartitionOffsetRequestInfo] = new HashMap[TopicAndPartition, PartitionOffsetRequestInfo]
-    requestInfo.put(topicAndPartition, new PartitionOffsetRequestInfo(whichTime, 1))
+    val requestInfo: Map[TopicAndPartition, PartitionOffsetRequestInfo] = HashMap(topicAndPartition -> new PartitionOffsetRequestInfo(whichTime, 1))
+
     val request: OffsetRequest = new OffsetRequest(requestInfo, kafka.api.OffsetRequest.CurrentVersion, clientName)
     val response: OffsetResponse = consumer.getOffsetsBefore(request)
     LOGGER.info("last offset: " + response.toString)
@@ -133,15 +151,17 @@ class SimpleScalaExample {
       LOGGER.error("Error fetching data Offset Data the Broker. Reason: " + response.errorCode(topic, partition))
       return 0
     }
-    val offsets: Array[Long] = response.offsets(topic, partition)
+    val offsets: Array[Long] = response.offsetsGroupedByTopic offsets(topic, partition)
     return offsets(0)
   }
 
-  private def getHost(broker: Option[Broker]) : Option[String] = {
-    broker.map { _.host }
+  private def getHost(broker: Option[Broker]): Option[String] = {
+    broker.map {
+      _.host
+    }
   }
 
-  private def findNewLeader(a_oldLeader: Option[Broker], a_topic: String, a_partition: Int): String = {
+  private def findNewLeader(a_oldLeader: Option[Broker], a_topic: String, a_partition: Int): Option[String] = {
     {
       var i: Int = 0
       while (i < 3) {
@@ -154,11 +174,17 @@ class SimpleScalaExample {
           else if (metadata.leader == null) {
             goToSleep = true
           }
-          else if (a_oldLeader.map { _.host.toLowerCase } == metadata.leader.map { _.host.toLowerCase } && i == 0) {
+          else if (a_oldLeader.map {
+            _.host.toLowerCase
+          } == metadata.leader.map {
+            _.host.toLowerCase
+          } && i == 0) {
             goToSleep = true
           }
           else {
-            return metadata.leader.host
+            return metadata.leader.map {
+              _.host
+            }
           }
           if (goToSleep) {
             try {
@@ -196,8 +222,9 @@ class SimpleScalaExample {
           val topics: List[String] = List(a_topic)
           val req: TopicMetadataRequest = new TopicMetadataRequest(topics, correlationId)
           val resp: TopicMetadataResponse = consumer.send(req)
-          val metaData: Seq[TopicMetadata] = resp.topicsMetadata
-          val metaDataFiltered: Seq[TopicMetadata] = metaData.filter(item => item.partitionsMetadata.contains(correlationId))
+          val topicMetaData: Seq[TopicMetadata] = resp.topicsMetadata
+
+          val topicMetadataFiltered: Seq[TopicMetadata] = topicMetaData.filter(topicM => topicM.partitionsMetadata.contains(correlationId))
       }
     } catch {
       case e: Exception => {

@@ -25,16 +25,16 @@ class LocalReceiverTest extends JUnit3Suite {
     val consumerConfig = new ConsumerConfig(consumerProps)
     val consumerConnector: ConsumerConnector = Consumer.create(consumerConfig)
     val topicMessageStreams = consumerConnector.createMessageStreams(Predef.Map(topic -> 1))
-    var threadList = List[ConsumerThread]()
+    //var threadList = List[ConsumerThread]()
     for ((topic, streamList) <- topicMessageStreams) {
       println("topic: " + topic)
       for (stream <- streamList) {
         println("starting consumer thread " + stream)
-        threadList ::= new ConsumerThread(stream)
+        //threadList ::= new ConsumerThread(stream)
       }
     }
-    for (thread <- threadList)
-      thread.start
+    //for (thread <- threadList)
+      //thread.start
   }
 
   @Test
