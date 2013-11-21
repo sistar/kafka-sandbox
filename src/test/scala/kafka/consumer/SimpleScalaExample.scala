@@ -39,7 +39,7 @@ class SimpleScalaExample {
 
   private var m_replicaBrokers: Seq[Broker]
 
-  private def handleFetchResponseError(numErrors: Int, fetchResponse: FetchResponse) : Int = {
+  private def handleFetchResponseError(numErrors: Int, fetchResponse: FetchResponse): Int = {
 
     val code: Short = fetchResponse.errorCode(topic, partition)
     LOGGER.error("Error fetching data from the Broker:" + metadata.leader.map {
@@ -161,81 +161,88 @@ class SimpleScalaExample {
     }
   }
 
+  private def sameLeader(partitionMetadata: Option[PartitionMetadata], a_oldLeader: Option[Broker]): Boolean = {
+    return partitionMetadata.exists {
+      _.leader.map {
+        _.host.toLowerCase()
+      } == a_oldLeader.map {
+        _.host.toLowerCase()
+      }
+    }
+  }
+
   private def findNewLeader(a_oldLeader: Option[Broker], a_topic: String, a_partition: Int): Option[String] = {
-    {
-      var i: Int = 0
-      while (i < 3) {
-        {
-          var goToSleep: Boolean = false
-          val metadata: PartitionMetadata = findLeader(m_replicaBrokers, a_topic, a_partition)
-          if (metadata == null) {
-            goToSleep = true
-          }
-          else if (metadata.leader == null) {
-            goToSleep = true
-          }
-          else if (a_oldLeader.map {
-            _.host.toLowerCase
-          } == metadata.leader.map {
-            _.host.toLowerCase
-          } && i == 0) {
-            goToSleep = true
-          }
-          else {
-            return metadata.leader.map {
-              _.host
-            }
-          }
-          if (goToSleep) {
-            try {
-              Thread.sleep(1000)
-            }
-            catch {
-              case ie: InterruptedException => {
-              }
-            }
+    for (i <- 0 to 2) {
+      false
+      val metadata: Option[PartitionMetadata] = findLeader(m_replicaBrokers, a_topic, a_partition)
+
+      val goToSleepBecauseDidNotFindNewLeader: Boolean = metadata.exists {
+        !_.leader.isDefined
+      }
+      val gotToSleepBecauseSameLeader = sameLeader(metadata, a_oldLeader) && (i == 0)
+      if (goToSleepBecauseDidNotFindNewLeader || gotToSleepBecauseSameLeader) {
+        try {
+          Thread.sleep(1000)
+        }
+        catch {
+          case ie: InterruptedException => {
           }
         }
-        ({
-          i += 1;
-          i - 1
-        })
+      } else {
+        return metadata.flatMap {
+          _.leader.map {
+            _.host
+          }
+        }
       }
     }
     LOGGER.error("Unable to find new leader after Broker failure. Exiting")
     throw new KafkaClientException("Unable to find new leader after Broker failure. Exiting")
   }
 
-  def using[Closeable <: {def close() : Unit}, B](closeable: Closeable)(getB: Closeable => B): B =
+  def using[Closeable <: {
+    def close() : Unit
+  }, B](closeable: Closeable)(getB: Closeable => B): B =
     try {
       getB(closeable)
     } finally {
       closeable.close()
     }
 
-
-  private def findLeader(seedBrokers: Seq[Broker], a_topic: String, correlationId: Int): PartitionMetadata = {
-    var returnMetaData: PartitionMetadata = null
-    seedBrokers.takeWhile(_ => returnMetaData == null).foreach(seed => try {
-      using(new SimpleConsumer(seed.host, seed.port, 100000, 64 * 1024, "leaderLookup")) {
-        consumer =>
-          val topics: List[String] = List(a_topic)
-          val req: TopicMetadataRequest = new TopicMetadataRequest(topics, correlationId)
-          val resp: TopicMetadataResponse = consumer.send(req)
-          val topicMetaData: Seq[TopicMetadata] = resp.topicsMetadata
-
-          val topicMetadataFiltered: Seq[TopicMetadata] = topicMetaData.filter(topicM => topicM.partitionsMetadata.contains(correlationId))
+  def find(partition: Int, topicsMetaData: Seq[TopicMetadata]): Option[PartitionMetadata] = {
+    for (topicMetaData <- topicsMetaData) {
+      for (x <- topicMetaData.partitionsMetadata) {
+        if (x.partitionId.equals(partition))
+          return Some(x)
       }
-    } catch {
-      case e: Exception => {
-        LOGGER.error("Error communicating with Broker [" + seed + "] to find Leader for [" + a_topic + ", " + correlationId + "] Reason: " + e)
-      }
-    })
-
-    if (returnMetaData != null) {
-      m_replicaBrokers = returnMetaData.replicas
     }
-    return returnMetaData
+    return None
+  }
+
+  private def findLeader(seedBrokers: Seq[Broker], a_topic: String, partition: Int): Option[PartitionMetadata] = {
+    var returnMetaData: Option[PartitionMetadata] = None
+    seedBrokers.takeWhile(_ => returnMetaData == None).foreach(seed =>
+      try {
+        using(new SimpleConsumer(seed.host, seed.port, 100000, 64 * 1024, "leaderLookup")) {
+          consumer =>
+            val topics: List[String] = List(a_topic)
+            val req: TopicMetadataRequest = new TopicMetadataRequest(topics, partition)
+            val resp: TopicMetadataResponse = consumer.send(req)
+            val foundPartitionMetadata: Option[PartitionMetadata] = find(partition, resp.topicsMetadata)
+            if (foundPartitionMetadata != None) {
+              m_replicaBrokers = foundPartitionMetadata.map(_.replicas).getOrElse(Seq())
+              return foundPartitionMetadata
+            }
+        }
+      }
+      catch {
+        case e: Exception => {
+          LOGGER.error("Error communicating with Broker [" + seed + "] to find Leader for [" + a_topic + ", " + partition + "] Reason: " + e)
+        }
+      })
+    return None
+
+
   }
 
 }
