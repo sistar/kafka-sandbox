@@ -4,16 +4,15 @@ import org.slf4j.{LoggerFactory, Logger}
 
 import scala.Long
 import scala.Predef.String
-import com.test.simple.{KafkaClientException, BrokerInfo}
+import com.test.simple.KafkaClientException
 import example.producer.KafkaProperties
 import kafka.api._
-import kafka.api.{PartitionOffsetRequestInfo, FetchRequestBuilder, FetchRequest}
+import kafka.api.{FetchRequestBuilder, FetchRequest}
 import kafka.common.{TopicAndPartition, ErrorMapping}
 import java.nio.ByteBuffer
-import com.google.common.collect.ImmutableList
 import kafka.cluster.Broker
-import scala.collection.immutable.HashMap
 import java.io.UnsupportedEncodingException
+import scala.collection.immutable.HashMap
 
 
 class SimpleScalaExample {
@@ -24,9 +23,9 @@ class SimpleScalaExample {
     val maxReads: Long = args(0).toLong
     val topic: String = args(1)
     val partition: Int = args(2).toInt
-    val seeds: ImmutableList[BrokerInfo] = BrokerInfo.brokerInfos(KafkaProperties.METADATA_BROKER_LIST)
+
     try {
-      example.run(maxReads, topic, partition, seeds)
+      example.run(maxReads, topic, partition, KafkaProperties.METADATA_BROKER_LIST)
     }
     catch {
       case e: Exception => {
@@ -37,60 +36,53 @@ class SimpleScalaExample {
   }
 
 
-  private var m_replicaBrokers: Seq[Broker]
-
-  private def handleFetchResponseError(numErrors: Int, fetchResponse: FetchResponse): Int = {
-
+  private def handleFetchResponseError(numErrors: Int, fetchResponse: FetchResponse, topic: String, partition: Int, metadata: Option[PartitionMetadata]): Short = {
     val code: Short = fetchResponse.errorCode(topic, partition)
-    LOGGER.error("Error fetching data from the Broker:" + metadata.leader.map {
-      _.host
-    }.get + " Reason: " + code)
+    val host = for {m <- metadata
+                    l <- m.leader
+                    h <- l.host} yield h
+    LOGGER.error("Error fetching data from the Broker:" + host + " Reason: " + code)
     if (numErrors + 1 > 5) throw new RuntimeException("more than 5 errors")
-    if (code == ErrorMapping.OffsetOutOfRangeCode) {
-      readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.LatestTime, clientName)
-      return numErrors + 1
-    }
-    consumer.close
-    consumer = null
-
-    leadBroker = findNewLeader(metadata.leader, topic, partition)
-    return numErrors + 1
+    return code
   }
 
-  def run(maxReads1: Long, topic: String, partition: Int, seedBrokers: ImmutableList[BrokerInfo]) {
+  def run(maxReads1: Long, topic: String, partition: Int, seedBrokers: String) {
     var maxReadsCounter = maxReads1
-    val metadata: PartitionMetadata = getPartitionMetadata(topic, partition, seedBrokers)
+    val metadata: Option[PartitionMetadata] = getPartitionMetadata(topic, partition, seedBrokers)
 
     //val leadBrokerPort: Integer = metadata.leader.port
     val clientName: String = "Client_" + topic + "_" + partition
-    var consumer = new SimpleConsumer(metadata.leader.map {
-      _.host
-    }.get, metadata.leader.map {
-      _.port
-    }.get, 100000, 64 * 1024, clientName)
-    var readOffset: Long = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.EarliestTime, clientName)
+    var consumer = simpleConsumer(metadata, clientName)
+    var readOffset: Long = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.EarliestTime, clientName).get.offsets.head
     LOGGER.info(String.format("last offset for topic %s partition %s : %s ", topic, partition, readOffset))
     var numErrors: Int = 0
     while (maxReadsCounter > 0) {
-      if (consumer == null) {
-        consumer = new SimpleConsumer(metadata.leader.map {
-          _.host
-        }.get, metadata.leader.map {
-          _.port
-        }.get, 100000, 64 * 1024, clientName)
+      if (consumer == None) {
+        consumer = simpleConsumer(metadata, clientName)
       }
       val req: FetchRequest = new FetchRequestBuilder().clientId(clientName).addFetch(topic, partition, readOffset, 100000).build
-      val fetchResponse: FetchResponse = consumer.fetch(req)
+      val fetchResponse: FetchResponse = consumer.get.fetch(req)
       if (fetchResponse.hasError) {
-        numErrors = handleFetchResponseError(numErrors, fetchResponse)
-      }
-      numErrors = 0
+        val code = handleFetchResponseError(numErrors, fetchResponse, topic, partition, metadata)
+        if (code == ErrorMapping.OffsetOutOfRangeCode) {
+          readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.LatestTime, clientName).get.offsets.head
+          return numErrors + 1
+        }
+        consumer match {
+          case None =>
+          case Some(c) => c.close()
+        }
+        consumer = None
+
+        findNewLeader(metadata.flatMap(_.leader), seedBrokers, topic, partition)
+      } else numErrors = 0
+
       var numRead: Long = 0
       for (messageAndOffset <- fetchResponse.messageSet(topic, partition)) {
         val currentOffset: Long = messageAndOffset.offset
         if (currentOffset < readOffset) {
           LOGGER.error("Found an old offset: " + currentOffset + " Expecting: " + readOffset)
-          continue //todo: continue is not supported
+          return
         }
         readOffset = messageAndOffset.nextOffset
         val payload: ByteBuffer = messageAndOffset.message.payload
@@ -119,7 +111,31 @@ class SimpleScalaExample {
         }
       }
     }
-    if (consumer != null) consumer.close
+    consumer match {
+      case None =>
+      case Some(c) => c.close()
+    }
+  }
+
+
+  def simpleConsumer(metadata: Option[PartitionMetadata], clientName: String): Option[SimpleConsumer] = {
+    Option(new SimpleConsumer(host(metadata), port(metadata), 100000, 64 * 1024, clientName))
+  }
+
+  def port(metadata: Option[PartitionMetadata]): Int = {
+    metadata.flatMap {
+      _.leader.map {
+        _.port
+      }
+    }.get
+  }
+
+  def host(metadata: Option[PartitionMetadata]): String = {
+    metadata.flatMap {
+      _.leader.map {
+        _.host
+      }
+    }.get
   }
 
   /**
@@ -129,30 +145,37 @@ class SimpleScalaExample {
    * @param seedBrokers
    * @return
    */
-  private def getPartitionMetadata(topic: String, partition: Int, seedBrokers: ImmutableList[BrokerInfo]): PartitionMetadata = {
-    val metadata: PartitionMetadata = findLeader(seedBrokers, topic, partition)
-    if (metadata == null) {
-      throw new KafkaClientException("Can't find metadata for Topic and Partition.")
+  private def getPartitionMetadata(topic: String, partition: Int, seedBrokers: String): Option[PartitionMetadata] = {
+    val metadata: Option[PartitionMetadata] = findLeader(seedBrokers, topic, partition)
+
+    metadata match {
+      case None =>
+        throw new KafkaClientException("Can't find metadata for Topic and Partition.")
     }
-    if (metadata.leader == null) {
-      throw new KafkaClientException("Can't find Leader for Topic and Partition.")
+
+    metadata.map(_.leader) match {
+      case None =>
+        throw new KafkaClientException("Can't find Leader for Topic and Partition.")
     }
+
     return metadata
   }
 
-  def getLastOffset(consumer: SimpleConsumer, topic: String, partition: Int, whichTime: Long, clientName: String): Long = {
-    val topicAndPartition: TopicAndPartition = new TopicAndPartition(topic, partition)
+  def getLastOffset(consumer: Option[SimpleConsumer], topic: String, partition: Int, whichTime: Long, clientName: String): Option[PartitionOffsetsResponse] = {
+    val topicAndPartition: TopicAndPartition = TopicAndPartition(topic, partition)
     val requestInfo: Map[TopicAndPartition, PartitionOffsetRequestInfo] = HashMap(topicAndPartition -> new PartitionOffsetRequestInfo(whichTime, 1))
 
-    val request: OffsetRequest = new OffsetRequest(requestInfo, kafka.api.OffsetRequest.CurrentVersion, clientName)
-    val response: OffsetResponse = consumer.getOffsetsBefore(request)
+    val request: OffsetRequest = OffsetRequest(requestInfo, kafka.api.OffsetRequest.CurrentVersion, partition, clientName)
+    val response: Option[OffsetResponse] = consumer.map(_.getOffsetsBefore(request))
     LOGGER.info("last offset: " + response.toString)
-    if (response.hasError) {
-      LOGGER.error("Error fetching data Offset Data the Broker. Reason: " + response.errorCode(topic, partition))
-      return 0
+    if (response.map(_.hasError).getOrElse(false)) {
+      LOGGER.error("Error fetching data Offset Data the Broker. Reason: " + response.get.partitionErrorAndOffsets.get(topicAndPartition))
+      return None
     }
-    val offsets: Array[Long] = response.offsetsGroupedByTopic offsets(topic, partition)
-    return offsets(0)
+    val offsets: Option[Map[TopicAndPartition, PartitionOffsetsResponse]] = response.get.offsetsGroupedByTopic.get(topic)
+    return offsets.flatMap {
+      _.get(topicAndPartition)
+    }
   }
 
   private def getHost(broker: Option[Broker]): Option[String] = {
@@ -171,10 +194,10 @@ class SimpleScalaExample {
     }
   }
 
-  private def findNewLeader(a_oldLeader: Option[Broker], a_topic: String, a_partition: Int): Option[String] = {
+  private def findNewLeader(a_oldLeader: Option[Broker], seedBrokers: String, a_topic: String, a_partition: Int): Option[String] = {
     for (i <- 0 to 2) {
       false
-      val metadata: Option[PartitionMetadata] = findLeader(m_replicaBrokers, a_topic, a_partition)
+      val metadata: Option[PartitionMetadata] = findLeader(seedBrokers, a_topic, a_partition)
 
       val goToSleepBecauseDidNotFindNewLeader: Boolean = metadata.exists {
         !_.leader.isDefined
@@ -219,18 +242,23 @@ class SimpleScalaExample {
     return None
   }
 
-  private def findLeader(seedBrokers: Seq[Broker], a_topic: String, partition: Int): Option[PartitionMetadata] = {
+  private def findLeader(seedBrokers: String, a_topic: String, partition: Int): Option[PartitionMetadata] = {
     var returnMetaData: Option[PartitionMetadata] = None
-    seedBrokers.takeWhile(_ => returnMetaData == None).foreach(seed =>
+    val sb: Array[Array[String]] = seedBrokers.split(",").map(_.split(":"))
+    sb.takeWhile(_ => returnMetaData == None).foreach(seed =>
       try {
-        using(new SimpleConsumer(seed.host, seed.port, 100000, 64 * 1024, "leaderLookup")) {
+        using(new SimpleConsumer(seed {
+          0
+        }, seed {
+          1
+        }.toInt, 100000, 64 * 1024, "leaderLookup")) {
           consumer =>
             val topics: List[String] = List(a_topic)
             val req: TopicMetadataRequest = new TopicMetadataRequest(topics, partition)
             val resp: TopicMetadataResponse = consumer.send(req)
             val foundPartitionMetadata: Option[PartitionMetadata] = find(partition, resp.topicsMetadata)
             if (foundPartitionMetadata != None) {
-              m_replicaBrokers = foundPartitionMetadata.map(_.replicas).getOrElse(Seq())
+              //m_replicaBrokers = foundPartitionMetadata.map(_.replicas).getOrElse(Seq())
               return foundPartitionMetadata
             }
         }
