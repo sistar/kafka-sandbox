@@ -2,8 +2,8 @@ package kafka.consumer
 
 import org.slf4j.{LoggerFactory, Logger}
 
-import scala.Long
-import scala.Predef.String
+
+
 import com.test.simple.KafkaClientException
 import example.producer.KafkaProperties
 import kafka.api._
@@ -14,10 +14,9 @@ import kafka.cluster.Broker
 import java.io.UnsupportedEncodingException
 import scala.collection.immutable.HashMap
 
+object SimpleScalaExample {
 
-class SimpleScalaExample {
-  private final val LOGGER: Logger = LoggerFactory.getLogger(classOf[SimpleScalaExample])
-
+  val LOGGER: Logger = LoggerFactory.getLogger(classOf[SimpleScalaExample])
   def main(args: Array[String]): Unit = {
     val example: SimpleScalaExample = new SimpleScalaExample
     val maxReads: Long = args(0).toLong
@@ -34,13 +33,17 @@ class SimpleScalaExample {
       }
     }
   }
+}
+
+class SimpleScalaExample {
 
 
+  val LOGGER: Logger = LoggerFactory.getLogger(classOf[SimpleScalaExample])
   private def handleFetchResponseError(numErrors: Int, fetchResponse: FetchResponse, topic: String, partition: Int, metadata: Option[PartitionMetadata]): Short = {
     val code = fetchResponse.errorCode(topic, partition)
     val host = for {m <- metadata
                     l <- m.leader
-                    h <- l.host} yield h
+                    } yield l.host
     LOGGER.error("Error fetching data from the Broker:" + host + " Reason: " + code)
     if (numErrors + 1 > 5) throw new RuntimeException("more than 5 errors")
     code
@@ -50,11 +53,11 @@ class SimpleScalaExample {
     var maxReadsCounter = maxReads1
     val metadata: Option[PartitionMetadata] = getPartitionMetadata(topic, partition, seedBrokers)
 
-    //val leadBrokerPort: Integer = metadata.leader.port
+
     val clientName: String = "Client_" + topic + "_" + partition
     var consumer = simpleConsumer(metadata, clientName)
     var readOffset: Long = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.EarliestTime, clientName).get.offsets.head
-    LOGGER.info(String.format("last offset for topic %s partition %s : %s ", topic, partition, readOffset))
+    LOGGER.info("last offset for topic %s partition %s : %s ".format( topic, partition, readOffset))
     var numErrors: Int = 0
     while (maxReadsCounter > 0) {
       if (consumer == None) {
@@ -144,11 +147,13 @@ class SimpleScalaExample {
     metadata match {
       case None =>
         throw new KafkaClientException("Can't find metadata for Topic and Partition.")
+      case Some(x) =>
     }
 
     metadata.map(_.leader) match {
       case None =>
         throw new KafkaClientException("Can't find Leader for Topic and Partition.")
+      case Some(x) =>
     }
 
     metadata
@@ -183,7 +188,6 @@ class SimpleScalaExample {
 
   private def findNewLeader(a_oldLeader: Option[Broker], seedBrokers: String, a_topic: String, a_partition: Int): Option[String] = {
     for (i <- 0 to 2) {
-      false
       val metadata: Option[PartitionMetadata] = findLeader(seedBrokers, a_topic, a_partition)
 
       val goToSleepBecauseDidNotFindNewLeader: Boolean = metadata.exists {
