@@ -38,9 +38,6 @@ object SimpleScalaExample {
   }
 }
 
-
-
-
 object Greeter {
 
   case object Begin
